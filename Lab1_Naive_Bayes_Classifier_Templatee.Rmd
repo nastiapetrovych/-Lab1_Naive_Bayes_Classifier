@@ -1,0 +1,251 @@
+---
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Probability and Statistics
+
+# Lab Assignment 1: Naive Bayes Classifier
+
+### *Tymur Krasnianskyi, Olha Hahurna, Anastasiia Petrovych*
+
+## Introduction
+
+During the past three weeks, we learned a couple of essential notions
+and theorems, and one of the most important among them is the *Bayes
+theorem*.
+
+One of its applications is **Naive Bayes classifier**, which is a
+probabilistic classifier whose aim is to determine which class some
+observation probably belongs to by using the Bayes formula:
+$$\mathsf{P}(\mathrm{class}\mid \mathrm{observation})=\frac{\mathsf{P}(\mathrm{observation}\mid\mathrm{class})\mathsf{P}(\mathrm{class})}{\mathsf{P}(\mathrm{observation})}$$
+
+Under the strong independence assumption, one can calculate
+$\mathsf{P}(\mathrm{observation} \mid \mathrm{class})$ as
+$$\mathsf{P}(\mathrm{observation}) = \prod_{i=1}^{n} \mathsf{P}(\mathrm{feature}_i), \qquad \mathsf{P}(\mathrm{observation} \mid \mathrm{class}) = \prod_{i=1}^{n} \mathsf{P}(\mathrm{feature}_i \mid \mathrm{class}),$$
+where $n$ is the total number of features describing a given
+observation. Thus, $\mathsf{P}(\mathrm{class}|\mathrm{observation})$ now
+can be calculated as
+
+$$\mathsf{P}(\mathrm{class} \mid \mathrm{\mathrm{observation}}) = \mathsf{P}(\mathrm{class})\times \prod_{i=1}^{n}\frac{\mathsf{P}(\mathrm{feature}_i\mid \mathrm{class})}{\mathsf{P}(\mathrm{feature}_i)}\tag{1}$$
+
+## Data description
+
+-   **2 - fake news** This data set contains data of American news: a
+    headline and an abstract of the article. Each piece of news is
+    classified as fake or credible. The task is to classify the news
+    from test.csv as credible or fake.
+
+Each data set consists of two files: *train.csv* and *test.csv*. The
+first one you will need find the probabilities distributions for each of
+the features, while the second one is needed for checking how well your
+classifier works.
+
+```{r}
+library(ggwordcloud)
+```
+
+```{r}
+# here goes a list of recommended libraries,
+# though you may install other ones if they are needed
+library(tidytext)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(zeallot)
+```
+
+### Data pre-processing
+
+```{r}
+list.files(getwd())
+list.files("lab1")
+```
+
+```{r}
+test_path <- "2-fake_news/test.csv"
+train_path <- "2-fake_news/train.csv"
+
+stop_words <- read_file("stop_words.txt")
+#list_of_words <- stop_words[[1]]
+# https://stackoverflow.com/questions/27195912/why-does-strsplit-return-a-list
+splitted_stop_words <- strsplit(stop_words, split='\n')
+splitted_stop_words <- splitted_stop_words[[1]]
+stop_words <- splitted_stop_words
+```
+
+```{r}
+train <-  read.csv(file = train_path, stringsAsFactors = FALSE)
+test <-  read.csv(file = test_path, stringsAsFactors = FALSE)
+```
+
+```{r}
+# note the power functional features of R bring us!
+tidy_text1 <- unnest_tokens(test, 'Headline', 'Body', token="words") %>%
+             filter(!Headline %in% stop_words)
+tidy_text2 <- unnest_tokens(train, 'Headline', 'Body', token="words") %>%
+             filter(!Headline %in% stop_words)
+
+
+unique_words = unique(tidy_text2$Headline)
+e <- new.env()
+e$new_labels <- rep(0, times = nrow(test))
+e$guess_counter <- 0
+e$total_predictions <- 0
+```
+
+## Classifier implementation
+
+```{r}
+naiveBayes <- setRefClass("naiveBayes",
+                          
+       # here it would be wise to have some vars to store intermediate result
+       # frequency dict etc. Though pay attention to bag of wards! 
+       fields = list(
+       ),
+       
+       methods = list(
+                      
+                    # prepare your training data as X - bag of words for each of your
+                    # messages and corresponding label for the message encoded as 0 or 1 
+                    # (binary classification task)
+                    fit = function(table)
+                    {
+                      all_credible_words <- table %>% filter(Label == "credible")
+                      count_in_credible <- all_credible_words %>% count(Headline,sort=TRUE)
+                      e$copy_credible_words <- count_in_credible
+                      number_of_credible_words = length(all_credible_words$Label)
+                      all_fake_words = table %>% filter(Label == "fake")
+                      count_in_fake <- all_fake_words %>% count(Headline,sort=TRUE)
+                      e$copy_fake_words <- count_in_fake
+                      e.count_in_credible <- count_in_credible
+                      e.count_in_fake <- count_in_fake
+                      number_of_fake_words = length(all_fake_words$Label)
+                      number_of_all_words = number_of_credible_words + number_of_fake_words
+                      
+                      range1 = nrow(count_in_credible)
+                      for(row in seq(range1)) {
+                        credible_probability = strtoi(count_in_credible[row, 2])/number_of_credible_words
+                        count_in_credible[row, 2] <- credible_probability
+                      }
+                      range2 = nrow(count_in_fake)
+                      for(row in seq(range2)) {
+                        fake_probability = strtoi(count_in_fake[row, 2])/number_of_fake_words
+                        count_in_fake[row, 2] <- fake_probability
+                      }
+                      return(list(count_in_credible, count_in_fake))
+                      
+                      
+                    },
+                    
+                    # return prediction for a single message 
+                    predict = function(message, credible_table, fake_table, number_of_all_words, number_of_credible_words, number_of_fake_words)
+                    {
+                      
+                      message_table = tidy_text1 %>% filter(X == message)
+                      message_words = message_table$Headline
+                      fake_probability_for_message = 1
+                      credible_probability_for_message = 1
+                      counter = 1
+                      for(word in message_words) {
+                        fake_probability <- fake_table[word,]
+                        credible_probability  <- credible_table[word,]
+                        fake_if_word = ((number_of_fake_words/number_of_all_words) * fake_probability)/ (((number_of_fake_words/number_of_all_words) * fake_probability) + ((number_of_credible_words/number_of_all_words) * credible_probability))
+                        credible_if_word = ((number_of_credible_words/number_of_all_words) * (credible_probability))/ (((number_of_fake_words/number_of_all_words) * fake_probability) + ((number_of_credible_words/number_of_all_words) * (credible_probability)))
+                        
+                        
+                        if(is.na(fake_if_word) == FALSE & is.na(credible_if_word) == FALSE) {
+                          credible_probability_for_message = credible_probability_for_message * credible_if_word
+                          fake_probability_for_message = fake_probability_for_message * fake_if_word
+                        }
+                        counter = counter + 1
+                      }
+                      if(fake_probability_for_message < credible_probability_for_message) {
+                        return(1)
+                      }
+                      else {
+                        return (0)
+                      }
+                      
+                    },
+                    
+                    
+                    build_prediction_table = function(data_table, credible_table, fake_table) {
+                      number_of_credible_words <- nrow(credible_table)
+                      number_of_fake_words = nrow(fake_table)
+                      number_of_all_words = number_of_credible_words + number_of_fake_words
+                      message_numbers = data_table$X
+                      counter = 1
+                      for(number in message_numbers) {
+                        a = predict(number, credible_table, fake_table, number_of_all_words, number_of_credible_words, number_of_fake_words)
+                        if(a == 1) {
+                          e$new_labels[counter] = "credible"
+                        }
+                        else {
+                          e$new_labels[counter] = "fake"
+                        }
+                        counter = counter + 1
+                      }
+                    },
+                    
+                    # score you test set so to get the understanding how well you model
+                    # works.
+                    # look at f1 score or precision and recall
+                    # visualize them 
+                    # try how well your model generalizes to real world data! 
+                    score = function(X_test, y_test)
+                    {
+                        result <- (X_test == y_test)
+                        e$a <- table(result)
+                        bad_results <- e$a[names(e$a)==FALSE]
+                        return(bad_results/length(result))
+                    }
+))
+
+model = naiveBayes()
+c(credible_words_probabilities, fake_words_probabilities) %<-% model$fit(tidy_text2)
+credible_words_probabilities <- data.frame(credible_words_probabilities[, -1], row.names = credible_words_probabilities$Headline)
+fake_words_probabilities <- data.frame(fake_words_probabilities[, -1], row.names = fake_words_probabilities$Headline)
+model$build_prediction_table(test, credible_words_probabilities, fake_words_probabilities)
+result_data_frame <- data.frame(test$Headline, e$new_labels)
+result <- model$score(test$Label, result_data_frame$e.new_labels)
+print(result)
+```
+
+### Data visualization
+
+```{r}
+set.seed(18102022)
+
+WORD_LIMIT <- 500
+
+view_count_in_credible <- head(e$copy_credible_words, WORD_LIMIT)
+ggplot(view_count_in_credible, aes(label = Headline, size = n, color =  factor(sample.int(100, nrow(view_count_in_credible), replace = TRUE)))) +
+  geom_text_wordcloud_area(rm_outside = TRUE) +
+  scale_size_area(max_size = 10) +
+  theme_minimal() +
+  ggtitle("Credible words")
+```
+
+```{r}
+view_count_in_fake <- head(e$copy_fake_words, WORD_LIMIT)
+ggplot(view_count_in_fake, aes(label = Headline, size = n, color = factor(sample.int(23913, nrow(view_count_in_fake), replace = TRUE)))) +
+  geom_text_wordcloud_area(rm_outside = TRUE) +
+  scale_size_area(max_size = 12) +
+  theme_minimal() +
+  ggtitle("Fake words")
+```
+
+```{r}
+
+barplot(e$a, main="Predictions: Successful vs Wrong",
+  xlab="Result", col=c("darkblue","red"),
+  legend = rownames(e$a)
+  )
+
+```
