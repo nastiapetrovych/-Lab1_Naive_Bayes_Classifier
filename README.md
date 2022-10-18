@@ -1,4 +1,4 @@
-# -Lab1_Naive_Bayes_Classifier
+# Lab1_Naive_Bayes_Classifier
 The group project of testing Naive Bayes formula based on R
 
 
@@ -6,7 +6,11 @@ The aim of the lab was to test the Naive Bayes formula, which indicates probabil
 
 ![image](https://user-images.githubusercontent.com/92577132/196523000-44c6aae7-f886-4daa-a611-338167eee9ed.png)
 
-Firstly, we had the database of words on which we should train our model and indicates if the probability of 
+Firstly, we had the database of words on which we should train our model and indicates the probability that the given world is fake or credible.
+
+Given this info, we got the table of the word, its numbers of occurences and counted the probability as number of given words in credible or fake dataframe devided by number of all words in credible or fake dataframe.
+
+After it, when we receive our new csv file, we read it and from each sentence form the bag of words. Each word recursively calls the function which count its probability of being fake or credible. Then, according to the bag of words model, we multiply the probability for each word in the sentence and compare which one is bigger. The given model efficiently detects whether the sentence is credible. The accurancy is more than 80%. Some percentage of mistake can be caused by avoiding the order of words(it is the reason why it is a Naive) and also we omit words which aren't in our training model. 
 
 
 # Probability and Statistics
